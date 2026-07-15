@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import errno
-import fcntl
 import os
 from contextlib import contextmanager
+
+from iai_mcp import _flock as fcntl  # flock seam: fcntl on POSIX, msvcrt region lock on Windows
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path

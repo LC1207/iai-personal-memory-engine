@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import errno
-import fcntl
 import json
 import os
 import secrets
 import threading
 import time
 from collections.abc import Callable
+
+from iai_mcp import _flock as fcntl  # flock seam: fcntl on POSIX, msvcrt region lock on Windows
 from datetime import datetime, timezone
 from pathlib import Path
 

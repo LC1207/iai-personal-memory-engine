@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import errno
-import fcntl
 import gzip
 import json
 import os
 import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from iai_mcp import _flock as fcntl  # flock seam: fcntl on POSIX, msvcrt region lock on Windows
 from typing import Any
 
 DEFAULT_LOG_DIR: Path = Path.home() / ".iai-mcp" / "logs"
