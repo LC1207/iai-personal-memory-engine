@@ -6,7 +6,12 @@ import faulthandler
 import json
 import logging
 import os
-import resource
+
+try:
+    import resource
+except ImportError:  # Windows: no resource module; fd rlimits are a Unix concern
+    resource = None  # type: ignore[assignment]
+
 import signal
 import sys
 import threading
@@ -127,6 +132,8 @@ _DAEMON_NOFILE_FLOOR_DEFAULT: int = 8192
 
 
 def _raise_fd_limit() -> None:
+    if resource is None:
+        return
     try:
         floor = int(
             os.environ.get("IAI_MCP_DAEMON_NOFILE_FLOOR", _DAEMON_NOFILE_FLOOR_DEFAULT)
@@ -1054,7 +1061,9 @@ async def main() -> int:
 
         shutdown = asyncio.Event()
         loop = asyncio.get_running_loop()
-        for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        # SIGHUP does not exist on Windows -- resolve lazily so the tuple
+        # itself cannot raise AttributeError there.
+        for sig in filter(None, (signal.SIGTERM, signal.SIGINT, getattr(signal, "SIGHUP", None))):
             try:
                 loop.add_signal_handler(sig, shutdown.set)
             except (NotImplementedError, RuntimeError):
