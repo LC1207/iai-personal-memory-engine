@@ -244,8 +244,8 @@ def cmd_daemon_uninstall(args: argparse.Namespace) -> int:
 
 def cmd_daemon_start(args: argparse.Namespace) -> int:
     from iai_mcp import cli as _cli
-    uid = os.getuid()
     if _cli._is_macos():
+        uid = os.getuid()
         target = _cli.LAUNCHD_TARGET
         _cli.subprocess.run(
             ["launchctl", "bootout", f"gui/{uid}", str(target)],

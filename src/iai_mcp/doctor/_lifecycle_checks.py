@@ -131,7 +131,11 @@ async def _socket_connect_probe(socket_path: Path, timeout: float) -> str | None
 
 
 def check_b_socket_fresh() -> CheckResult:
-    socket_path = _resolve_socket_path()
+    from iai_mcp._ipc import IS_WINDOWS, PORT_FILE
+
+    # Windows has no unix socket; the daemon advertises a TCP port in
+    # PORT_FILE and open_ipc_connection resolves the transport itself.
+    socket_path = PORT_FILE if IS_WINDOWS else _resolve_socket_path()
     if not socket_path.exists():
         return CheckResult(
             "(b) socket file fresh",
@@ -165,7 +169,8 @@ def check_b_socket_fresh() -> CheckResult:
 
 def check_c_lock_healthy() -> CheckResult:
     import errno as _errno
-    import fcntl as _fcntl
+
+    from iai_mcp import _flock as _fcntl  # flock seam: fcntl on POSIX, msvcrt region lock on Windows
 
     lock_path = _resolve_hippo_db_path().parent / ".lock"
     if not lock_path.exists():
