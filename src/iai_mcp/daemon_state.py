@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import tempfile
+
+from iai_mcp import _flock as fcntl  # flock seam: fcntl on POSIX, msvcrt region lock on Windows
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
