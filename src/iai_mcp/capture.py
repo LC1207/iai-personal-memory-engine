@@ -774,7 +774,9 @@ def capture_transcript(
 
     counts = {"inserted": 0, "reinforced": 0, "skipped": 0, "errors": 0}
     seen = 0
-    with path.open() as fh:
+    # Transcripts are UTF-8 regardless of platform; without this Windows uses the
+    # locale codec (cp1252) and any smart quote/em-dash/emoji raises UnicodeDecodeError.
+    with path.open(encoding="utf-8") as fh:
         for line in fh:
             if seen >= max_turns:
                 break
@@ -925,11 +927,15 @@ def write_deferred_event(
     # O_CREAT mode applies only on create; enforce 0600 on every open so a
     # pre-existing 0644 file is tightened too (idempotent, best-effort).
     try:
-        os.fchmod(fd, 0o600)
+        # POSIX-only: on Windows os.fchmod does not exist, and the bare call raised
+        # AttributeError straight past this OSError handler. Same hasattr guard the
+        # rest of the codebase already uses (crypto.py, memory_bank.py).
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
     except OSError:
         pass
     try:
-        fh = os.fdopen(fd, "a")  # fdopen now owns fd; the with-block closes it
+        fh = os.fdopen(fd, "a", encoding="utf-8")  # fdopen now owns fd; with-block closes it
     except BaseException:
         os.close(fd)  # only reached if fdopen itself failed (fd not yet owned)
         raise
