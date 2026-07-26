@@ -291,7 +291,9 @@ def cmd_capture_turn_deferred(args: argparse.Namespace) -> int:
             except ValueError:
                 prev_offset = 0
 
-        with transcript.open() as fh:
+        # Transcripts are UTF-8 on every platform; without this Windows falls back to the
+        # locale codec (cp1252) and one smart quote/em-dash/emoji aborts the whole capture.
+        with transcript.open(encoding="utf-8") as fh:
             all_lines = fh.readlines()
         total = len(all_lines)
 
