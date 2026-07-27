@@ -198,7 +198,7 @@ def save_state(record: LifecycleStateRecord, path: Path | None = None) -> None:
     )
     replaced = False
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(record, f, indent=2)
             f.flush()
             os.fsync(f.fileno())

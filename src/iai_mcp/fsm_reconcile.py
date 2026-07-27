@@ -68,7 +68,7 @@ def _auto_correct_legacy(legacy_path: Path, canonical_state: str) -> bool:
 
     try:
         fd, tmp = tempfile.mkstemp(dir=str(legacy_path.parent), suffix=".tmp")
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(raw, f)
         os.replace(tmp, str(legacy_path))
         return True
