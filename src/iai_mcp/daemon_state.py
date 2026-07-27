@@ -104,7 +104,7 @@ def save_state(state: dict) -> None:
             dir=str(target.parent),
         )
         try:
-            with os.fdopen(fd, "w") as f:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(state, f, indent=2)
                 f.flush()
                 os.fsync(f.fileno())

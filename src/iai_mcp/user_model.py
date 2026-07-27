@@ -90,7 +90,7 @@ def save(model: UserModel) -> None:
             "last_updated": model.last_updated.isoformat(),
             "aggregation_window_days": int(model.aggregation_window_days),
         }
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
