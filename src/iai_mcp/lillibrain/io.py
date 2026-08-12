@@ -92,7 +92,14 @@ def fsync_directory(path: str | Path) -> None:
     of the file content is required.
 
     Raises OSError if the directory cannot be opened or flushed.
+
+    No-op on Windows: os.open() on a directory raises PermissionError there,
+    and the platform exposes no directory handle to fsync. Metadata durability
+    for the rename itself is NTFS's business, so skipping is the only correct
+    behaviour — raising would take the caller's whole checkpoint down with it.
     """
+    if os.name == "nt":
+        return
     dir_path = str(path)
     dir_fd = os.open(dir_path, os.O_RDONLY)
     try:
