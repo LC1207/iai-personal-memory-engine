@@ -1550,7 +1550,16 @@ def _install_boot_signal_trace() -> None:
         except Exception:  # noqa: BLE001 -- re-raise is best-effort
             os._exit(128 + int(signum))
 
-    for _sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    # SIGHUP is POSIX-only. Naming it inside the tuple raised AttributeError
+    # while the tuple was being BUILT — outside the per-signal try below — so
+    # on Windows the daemon died here, before the store ever opened, with a
+    # traceback that pythonw swallows entirely. Resolve it defensively instead.
+    _boot_signals = [signal.SIGTERM, signal.SIGINT]
+    _sighup = getattr(signal, "SIGHUP", None)
+    if _sighup is not None:
+        _boot_signals.append(_sighup)
+
+    for _sig in _boot_signals:
         try:
             signal.signal(_sig, _trace)
         except (AttributeError, ValueError, OSError):
