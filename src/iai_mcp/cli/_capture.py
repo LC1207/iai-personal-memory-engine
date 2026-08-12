@@ -570,12 +570,17 @@ def cmd_capture_turn_deferred(args: argparse.Namespace) -> int:
         tmp_path = offset_path.parent / (f"{offset_path.name}.tmp{os.getpid()}")
         _write_state_file(tmp_path, str(new_offset))
         os.replace(tmp_path, offset_path)
-        # Rename durability needs the directory entry flushed too.
-        dfd = os.open(str(state_dir), os.O_RDONLY)
-        try:
-            os.fsync(dfd)
-        finally:
-            os.close(dfd)
+        # Rename durability needs the directory entry flushed too — a POSIX
+        # idiom with no Windows equivalent: os.open() on a directory raises
+        # PermissionError there. Unguarded it aborted every deferred turn
+        # capture AFTER the state files were already published, so the hook
+        # reported "capture-turn-deferred failed" on work that had succeeded.
+        if os.name != "nt":
+            dfd = os.open(str(state_dir), os.O_RDONLY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
 
         try:
             _drive_trajectory_metrics(args.session_id, state_dir)
