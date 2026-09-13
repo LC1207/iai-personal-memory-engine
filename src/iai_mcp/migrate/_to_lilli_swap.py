@@ -54,6 +54,13 @@ def _rename(src: Path, dst: Path) -> None:
 
 
 def _fsync_dir(path: Path) -> None:
+    # Windows: os.open() on a directory raises PermissionError (errno 13) and
+    # there is no directory handle to fsync; NTFS owns the rename's metadata
+    # durability. Raising here took the swap down AFTER both renames had
+    # landed (SERVER-ALPHA 2026-09-13), leaving a correct store behind a
+    # marker the daemon refuses to boot past. Same guard as lillibrain/io.py.
+    if os.name == "nt":
+        return
     fd = os.open(str(path), os.O_RDONLY)
     try:
         os.fsync(fd)
