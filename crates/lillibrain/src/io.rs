@@ -63,9 +63,23 @@ fn full_fsync(file: &File) -> Result<()> {
 /// durable. The directory is opened read-only, synced, and closed. The error is
 /// always propagated.
 pub fn fsync_directory(path: &Path) -> Result<()> {
-    let dir = File::open(path)?;
-    dir.sync_all()?;
-    Ok(())
+    // Windows: File::open on a directory needs FILE_FLAG_BACKUP_SEMANTICS and
+    // returns ERROR_ACCESS_DENIED (os error 5) without it, which took the
+    // journal create -- and with it every native-store open -- down on
+    // SERVER-ALPHA. Directory-entry durability for the rename is NTFS's
+    // business, so skipping is the correct behaviour, mirroring the Python
+    // twin in lillibrain/io.py.
+    #[cfg(windows)]
+    {
+        let _ = path;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let dir = File::open(path)?;
+        dir.sync_all()?;
+        Ok(())
+    }
 }
 
 /// Flush the directory entry for `path`'s containing directory to stable
