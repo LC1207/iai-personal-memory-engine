@@ -104,6 +104,16 @@ pub struct Pager {
     /// connection-close time rather than waiting for the Rust object to be
     /// dropped (which is non-deterministic under Python's GC).
     file: Mutex<Option<File>>,
+    /// Windows only: the single-writer lock lives on a sidecar (`<db>.wlock`)
+    /// rather than on the store file. `LockFileEx` is a MANDATORY lock, so a
+    /// lock taken on the data file itself refuses every second handle on it
+    /// -- WAL/journal recovery on open (a second write handle, `os error 33`)
+    /// and every lock-free read-only reader alongside the writer -- which on
+    /// POSIX are all fine under an advisory `flock`. Locking a sidecar keeps
+    /// the exclusivity guarantee and leaves the data file free of byte-range
+    /// locks, restoring the advisory semantics the rest of the crate assumes.
+    /// `None` on non-Windows and on read-only pagers.
+    lock_file: Mutex<Option<File>>,
     page_size: usize,
     inner: Mutex<Inner>,
     /// Write-transaction state (journal/WAL + per-txn bookkeeping).
@@ -164,6 +174,14 @@ struct RoSnapshotFence {
     wal_path: PathBuf,
 }
 
+/// Sidecar that carries the single-writer lock on Windows (`<db>.wlock`).
+#[cfg(windows)]
+fn lock_path_for(db_path: &Path) -> PathBuf {
+    let mut name = db_path.file_name().unwrap_or_default().to_os_string();
+    name.push(".wlock");
+    db_path.with_file_name(name)
+}
+
 impl Pager {
     /// Open or create the store file at `path`.
     ///
@@ -179,13 +197,34 @@ impl Pager {
             .create(true)
             .truncate(false)
             .open(&path)?;
-        // Advisory single-writer lock on the store file.
-        Fs4FileExt::try_lock(&file).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::WouldBlock,
-                format!("store is locked: {e}"),
-            )
-        })?;
+        // Advisory single-writer lock. POSIX: on the store file itself.
+        // Windows: on the `<db>.wlock` sidecar (see the `lock_file` field).
+        #[cfg(not(windows))]
+        let lock_file: Option<File> = {
+            Fs4FileExt::try_lock(&file).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    format!("store is locked: {e}"),
+                )
+            })?;
+            None
+        };
+        #[cfg(windows)]
+        let lock_file: Option<File> = {
+            let lf = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(lock_path_for(&path))?;
+            Fs4FileExt::try_lock(&lf).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    format!("store is locked: {e}"),
+                )
+            })?;
+            Some(lf)
+        };
 
         #[cfg(unix)]
         {
@@ -199,6 +238,7 @@ impl Pager {
         let pager = Pager {
             path,
             file: Mutex::new(Some(file)),
+            lock_file: Mutex::new(lock_file),
             page_size: PAGE_SIZE,
             inner: Mutex::new(Inner {
                 cache: HashMap::new(),
@@ -354,6 +394,7 @@ impl Pager {
         let pager = Pager {
             path,
             file: Mutex::new(Some(file)),
+            lock_file: Mutex::new(None),
             page_size: PAGE_SIZE,
             inner: Mutex::new(Inner {
                 cache: HashMap::new(),
@@ -1132,9 +1173,20 @@ impl Pager {
         // the main file fd so the OS handle is freed at connection-close time.
         let mut file_guard = self.file.lock();
         if !self.read_only {
-            if let Some(ref f) = *file_guard {
-                Fs4FileExt::unlock(f)?;
+            let mut lock_guard = self.lock_file.lock();
+            match lock_guard.as_ref() {
+                // Windows: the lock is on the sidecar; release and close it.
+                Some(lf) => {
+                    Fs4FileExt::unlock(lf)?;
+                }
+                // POSIX: the lock is on the store file itself.
+                None => {
+                    if let Some(ref f) = *file_guard {
+                        Fs4FileExt::unlock(f)?;
+                    }
+                }
             }
+            *lock_guard = None;
         }
         *file_guard = None;
         Ok(())
